@@ -504,7 +504,7 @@
             </svg>
           </div>
           <h2>Treinamento concluído!</h2>
-          <p>Comprovante pronto para download.</p>
+          <p>Comprovante será salvo automaticamente na nuvem.</p>
           <p style="font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.4px;font-weight:700;margin-top:10px">Protocolo</p>
           <div class="proto-badge" id="protocolo">—</div>
           <div class="pdf-row">
@@ -513,14 +513,14 @@
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <path d="M14 2v6h6"/>
               </svg>
-              Gerar e baixar PDF
+              Gerar e salvar PDF
             </button>
             <button class="btn btn-soft-blue" id="btnBaixarPdf" type="button" disabled>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
                 <path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>
               </svg>
-              Baixar novamente
+              Salvar novamente
             </button>
           </div>
           <div style="display:flex;justify-content:center;margin-top:14px">
@@ -554,221 +554,312 @@
 </div>
 
 <script>
- const TEMPO=1, LOCAL="Mineração Bom Retiro";
- const $=id=>document.getElementById(id);
- const stepEls=[1,2,3,4,5].map(n=>$("step"+n));
- const dotEls=[1,2,3,4,5].map(n=>$("dot"+n));
- const bPrev=$("btnPrev"),bNext=$("btnNext"),bLimpar=$("btnLimpar"),bSaveSig=$("btnSalvarSig");
- const bGerarPdf=$("btnGerarPdf"),bBaixarPdf=$("btnBaixarPdf");
- const video=$("trainingVideo"),prBar=$("progressBar"),prTxt=$("tempoProgTxt");
- const sVideo=$("statusVideo"),sId=$("statusId"),sQuiz=$("statusQuiz");
- const sTermo=$("statusTermo"),sSig=$("statusSig"),sPdf=$("statusPdf");
- const sLabel=$("stepLabel"),sigInfo=$("sigInfo"),protoEl=$("protocolo");
- const canvas=$("sig"),aceite=$("aceite");
- const nome=$("nome"),cpf=$("cpf"),empresa=$("empresa"),placa=$("placa");
- const q1=$("q1"),q2=$("q2"),q3=$("q3");
- const toast=$("toast");
+const TEMPO = 360; // 360 segundos = 6 minutos
+const LOCAL = "Mineração Bom Retiro";
+const API_URL = "https://project-yczfj.vercel.app/api/salvar-pdf";
 
- let step=1,proto="",pdfOk=false,secs=0,tick=null;
- let sigSaved=false,sigUrl="",sigHash="";
- let gerandoAuto=false;
+const $ = id => document.getElementById(id);
+const stepEls = [1,2,3,4,5].map(n => $("step" + n));
+const dotEls = [1,2,3,4,5].map(n => $("dot" + n));
 
- const badge=(el,t,txt)=>{el.className="status "+t;el.innerHTML='<div class="sd"></div>'+txt;};
- const showT=m=>{toast.style.display="block";toast.textContent=m;};
- const hideT=()=>toast.style.display="none";
- const fmt=s=>Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
- const nCpf=v=>(v||"").replace(/\D/g,"").slice(0,11);
- const nPl=v=>(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,7);
- const filled=v=>(v||"").trim().length>0;
- const okCpf=v=>{const d=nCpf(v);return d.length===11&&!/^(\d)\1{10}$/.test(d);};
- const rnd=n=>{let s="";for(let i=0;i<n;i++)s+=Math.floor(Math.random()*10);return s;};
- const mkProto=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return`MIN-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}-${rnd(6)}`;};
- const nowBR=()=>{const d=new Date(),p=x=>String(x).padStart(2,"0");return`${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;};
+const bPrev = $("btnPrev"), bNext = $("btnNext"), bLimpar = $("btnLimpar"), bSaveSig = $("btnSalvarSig");
+const bGerarPdf = $("btnGerarPdf"), bBaixarPdf = $("btnBaixarPdf");
+const video = $("trainingVideo"), prBar = $("progressBar"), prTxt = $("tempoProgTxt");
+const sVideo = $("statusVideo"), sId = $("statusId"), sQuiz = $("statusQuiz");
+const sTermo = $("statusTermo"), sSig = $("statusSig"), sPdf = $("statusPdf");
+const sLabel = $("stepLabel"), sigInfo = $("sigInfo"), protoEl = $("protocolo");
+const canvas = $("sig"), aceite = $("aceite");
+const nome = $("nome"), cpf = $("cpf"), empresa = $("empresa"), placa = $("placa");
+const q1 = $("q1"), q2 = $("q2"), q3 = $("q3");
+const toast = $("toast");
 
- // SHA-256 com fallback em JavaScript puro. Isso faz a assinatura funcionar também no celular via http://IP.
- async function sha256(msg){
-   if(window.crypto && crypto.subtle && window.isSecureContext){
-     const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(msg));
-     return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("");
-   }
-   function rotr(n,x){return (x>>>n)|(x<<(32-n));}
-   function utf8(s){return unescape(encodeURIComponent(s));}
-   const K=[0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
-   let H=[0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
-   msg=utf8(msg);
-   const l=msg.length*8;
-   let bytes=[];
-   for(let i=0;i<msg.length;i++)bytes.push(msg.charCodeAt(i));
-   bytes.push(0x80);
-   while((bytes.length%64)!==56)bytes.push(0);
-   for(let i=7;i>=0;i--)bytes.push((l/(2**(i*8)))&255);
-   for(let i=0;i<bytes.length;i+=64){
-     let w=new Array(64);
-     for(let j=0;j<16;j++)w[j]=((bytes[i+4*j]<<24)|(bytes[i+4*j+1]<<16)|(bytes[i+4*j+2]<<8)|(bytes[i+4*j+3]))>>>0;
-     for(let j=16;j<64;j++){
-       const s0=(rotr(7,w[j-15])^rotr(18,w[j-15])^(w[j-15]>>>3))>>>0;
-       const s1=(rotr(17,w[j-2])^rotr(19,w[j-2])^(w[j-2]>>>10))>>>0;
-       w[j]=(w[j-16]+s0+w[j-7]+s1)>>>0;
-     }
-     let [a,b,c,d,e,f,g,h]=H;
-     for(let j=0;j<64;j++){
-       const S1=(rotr(6,e)^rotr(11,e)^rotr(25,e))>>>0;
-       const ch=((e&f)^((~e)&g))>>>0;
-       const t1=(h+S1+ch+K[j]+w[j])>>>0;
-       const S0=(rotr(2,a)^rotr(13,a)^rotr(22,a))>>>0;
-       const maj=((a&b)^(a&c)^(b&c))>>>0;
-       const t2=(S0+maj)>>>0;
-       h=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b;b=a;a=(t1+t2)>>>0;
-     }
-     H=[(H[0]+a)>>>0,(H[1]+b)>>>0,(H[2]+c)>>>0,(H[3]+d)>>>0,(H[4]+e)>>>0,(H[5]+f)>>>0,(H[6]+g)>>>0,(H[7]+h)>>>0];
-   }
-   return H.map(x=>x.toString(16).padStart(8,"0")).join("");
- }
+let step = 1, proto = "", pdfOk = false, secs = 0, tick = null;
+let sigSaved = false, sigUrl = "", sigHash = "";
+let gerandoAuto = false;
+let draw = false, lx = 0, ly = 0;
 
- const ok1=()=>secs>=TEMPO;
- const ok2=()=>filled(nome.value)&&okCpf(cpf.value)&&filled(empresa.value)&&nPl(placa.value).length>=6;
- const ok3=()=>q1.value==="30"&&q2.value==="seguir"&&q3.value==="epi";
- const ok4=()=>aceite.checked&&sigSaved;
- const canGo=s=>{if(s===1)return ok1();if(s===2)return ok2();if(s===3)return ok3();if(s===4)return ok4();return false;};
- const names=["Vídeo","Identificação","Questionário","Termo e assinatura","Concluído"];
+const badge = (el, tipo, txt) => {
+  el.className = "status " + tipo;
+  el.innerHTML = '<div class="sd"></div>' + txt;
+};
+const showT = msg => { toast.style.display = "block"; toast.textContent = msg; };
+const hideT = () => { toast.style.display = "none"; };
+const fmt = s => Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+const nCpf = v => (v || "").replace(/\D/g, "").slice(0, 11);
+const nPl = v => (v || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 7);
+const filled = v => (v || "").trim().length > 0;
+const okCpf = v => { const d = nCpf(v); return d.length === 11 && !/^(\d)\1{10}$/.test(d); };
+const rnd = n => { let s = ""; for (let i = 0; i < n; i++) s += Math.floor(Math.random() * 10); return s; };
+const mkProto = () => {
+  const d = new Date(), p = x => String(x).padStart(2, "0");
+  return `MIN-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}-${rnd(6)}`;
+};
+const nowBR = () => {
+  const d = new Date(), p = x => String(x).padStart(2, "0");
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
 
- function s2ui(){if(ok2())badge(sId,"ok","Identificação completa");else badge(sId,"warn","Preencha todos os campos corretamente");}
- function s3ui(){if(ok3())badge(sQuiz,"ok","Questionário aprovado");else badge(sQuiz,"warn","Questões pendentes");}
- function s4ui(){aceite.checked?badge(sTermo,"ok","Termo aceito"):badge(sTermo,"warn","Termo pendente");sigSaved?badge(sSig,"ok","Assinatura registrada"):badge(sSig,"warn","Assinatura pendente");}
- function ui(){
-   sLabel.textContent=`Etapa ${step} de 5 — ${names[step-1]}`;
-   dotEls.forEach((d,i)=>{d.classList.remove("done","active");if(i<step-1)d.classList.add("done");else if(i===step-1)d.classList.add("active");});
-   stepEls.forEach((el,i)=>el.classList.toggle("active",i===step-1));
-   bPrev.disabled=step===1;
-   bNext.disabled=step===5 || !canGo(step);
- }
- function goTo(n){
-   step=Math.min(5,Math.max(1,n));hideT();ui();
-   if(step===2)s2ui();
-   if(step===3)s3ui();
-   if(step===4){setTimeout(()=>{fitCanvas();clearSig(false);s4ui();ui();},60);}
-   if(step===5){if(!proto)proto=mkProto();protoEl.textContent=proto;badge(sPdf,"warn","Gerando PDF automaticamente...");setTimeout(()=>{gerarPdfAutomaticamente();},500);}
- }
- bPrev.addEventListener("click",()=>goTo(step-1));
- bNext.addEventListener("click",()=>{if(!canGo(step)){showT("Conclua os requisitos desta etapa para avançar.");return;}goTo(step+1);});
+async function sha256(txt) {
+  if (!window.crypto || !crypto.subtle) {
+    throw new Error("SHA-256 indisponível neste navegador/contexto. Use HTTPS.");
+  }
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt));
+  return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+}
 
- function updVideo(){
-   prBar.style.width=Math.min(100,Math.round((secs/TEMPO)*100))+"%";
-   prTxt.textContent=fmt(Math.min(secs,TEMPO))+" / 6:00";
-   if(ok1()){badge(sVideo,"ok","Tempo mínimo cumprido — pode avançar");stopT();}
-   else badge(sVideo,"warn","Aguardando 6 minutos de reprodução");
-   ui();
- }
- function startT(){if(tick)return;tick=setInterval(()=>{secs++;updVideo();},1000);}
- function stopT(){if(!tick)return;clearInterval(tick);tick=null;}
- video.addEventListener("play",startT);
- video.addEventListener("pause",stopT);
- video.addEventListener("ended",stopT);
- document.addEventListener("visibilitychange",()=>{if(document.hidden)stopT();else if(!video.paused&&!ok1())startT();});
+const ok1 = () => secs >= TEMPO;
+const ok2 = () => filled(nome.value) && okCpf(cpf.value) && filled(empresa.value) && nPl(placa.value).length >= 6;
+const ok3 = () => q1.value === "30" && q2.value === "seguir" && q3.value === "epi";
+const ok4 = () => aceite.checked && sigSaved;
+const canGo = s => { if (s === 1) return ok1(); if (s === 2) return ok2(); if (s === 3) return ok3(); if (s === 4) return ok4(); return false; };
+const names = ["Vídeo", "Identificação", "Questionário", "Termo e assinatura", "Concluído"];
 
- cpf.addEventListener("input",()=>{cpf.value=nCpf(cpf.value);s2ui();ui();});
- placa.addEventListener("input",()=>{placa.value=nPl(placa.value);s2ui();ui();});
- [nome,empresa].forEach(el=>el.addEventListener("input",()=>{s2ui();ui();}));
- [q1,q2,q3].forEach(el=>el.addEventListener("change",()=>{s3ui();ui();}));
- aceite.addEventListener("change",()=>{s4ui();ui();});
+function s2ui(){ ok2() ? badge(sId,"ok","Identificação completa") : badge(sId,"warn","Preencha todos os campos corretamente"); }
+function s3ui(){ ok3() ? badge(sQuiz,"ok","Questionário aprovado") : badge(sQuiz,"warn","Questões pendentes"); }
+function s4ui(){
+  aceite.checked ? badge(sTermo,"ok","Termo aceito") : badge(sTermo,"warn","Termo pendente");
+  sigSaved ? badge(sSig,"ok","Assinatura registrada") : badge(sSig,"warn","Assinatura pendente");
+}
 
- function fitCanvas(){
-   const r=Math.max(window.devicePixelRatio||1,1);
-   const w=canvas.offsetWidth,h=canvas.offsetHeight;
-   if(!w||!h)return;
-   canvas.width=Math.floor(w*r);canvas.height=Math.floor(h*r);
-   const ctx=canvas.getContext("2d");
-   ctx.setTransform(r,0,0,r,0,0);
-   ctx.lineWidth=2.4;ctx.lineCap="round";ctx.lineJoin="round";ctx.strokeStyle="rgba(14,27,61,.9)";
- }
- function clearSig(reset=true){
-   const ctx=canvas.getContext("2d"),w=canvas.offsetWidth||1,h=canvas.offsetHeight||1;
-   ctx.clearRect(0,0,w,h);
-   ctx.beginPath();ctx.moveTo(14,h-18);ctx.lineTo(w-14,h-18);
-   ctx.strokeStyle="rgba(14,27,61,.12)";ctx.lineWidth=1;ctx.stroke();
-   ctx.strokeStyle="rgba(14,27,61,.9)";ctx.lineWidth=2.4;
-   if(reset){sigSaved=false;sigUrl="";sigHash="";sigInfo.textContent="Assinatura não registrada";s4ui();ui();}
- }
- function hasInk(){
-   const ctx=canvas.getContext("2d",{willReadFrequently:true}),w=canvas.width,h=canvas.height;
-   if(!w||!h)return false;
-   const iy=Math.floor(h*.78),img=ctx.getImageData(0,0,w,h).data;
-   for(let y=0;y<h;y+=8){if(y>=iy)continue;for(let x=0;x<w;x+=8){if(img[(y*w+x)*4+3]>20)return true;}}
-   return false;
- }
- let draw=false,lx=0,ly=0;
- const gPos=e=>{const r=canvas.getBoundingClientRect(),t=e.touches&&e.touches[0];return{x:(t?t.clientX:e.clientX)-r.left,y:(t?t.clientY:e.clientY)-r.top};};
- function startDraw(e){draw=true;const p=gPos(e);lx=p.x;ly=p.y;}
- function moveDraw(e){if(!draw)return;if(e.cancelable)e.preventDefault();const ctx=canvas.getContext("2d"),p=gPos(e);ctx.beginPath();ctx.moveTo(lx,ly);ctx.lineTo(p.x,p.y);ctx.stroke();lx=p.x;ly=p.y;}
- canvas.addEventListener("mousedown",startDraw);
- canvas.addEventListener("mousemove",moveDraw);
- window.addEventListener("mouseup",()=>draw=false);
- canvas.addEventListener("touchstart",startDraw,{passive:false});
- canvas.addEventListener("touchmove",moveDraw,{passive:false});
- window.addEventListener("touchend",()=>draw=false);
- bLimpar.addEventListener("click",()=>clearSig(true));
- bSaveSig.addEventListener("click",async()=>{
-   try{
-     if(canvas.width===0||canvas.height===0){fitCanvas();clearSig(false);}
-     if(!hasInk()){sigSaved=false;sigUrl="";sigHash="";sigInfo.textContent="Parece vazia — assine novamente.";badge(sSig,"bad","Assinatura inválida");ui();return;}
-     sigUrl=canvas.toDataURL("image/png");
-     sigHash=await sha256(`${nCpf(cpf.value)}\n${nPl(placa.value)}\n${sigUrl.slice(0,1800)}`);
-     sigSaved=true;sigInfo.textContent="Assinatura registrada ✓";s4ui();ui();
-   }catch(e){
-     console.error(e);
-     sigSaved=false;sigUrl="";sigHash="";
-     sigInfo.textContent="Erro ao salvar assinatura — tente novamente.";
-     badge(sSig,"bad","Erro ao salvar assinatura");ui();
-   }
- });
- window.addEventListener("resize",()=>{if(step===4){fitCanvas();clearSig(false);}});
+function ui(){
+  sLabel.textContent = `Etapa ${step} de 5 — ${names[step-1]}`;
+  dotEls.forEach((d,i) => {
+    d.classList.remove("done", "active");
+    if (i < step - 1) d.classList.add("done");
+    else if (i === step - 1) d.classList.add("active");
+  });
+  stepEls.forEach((el,i) => el.classList.toggle("active", i === step - 1));
+  bPrev.disabled = step === 1;
+  bNext.disabled = step === 5 || !canGo(step);
+}
 
- function mkPDF(pay){
-   const{jsPDF}=window.jspdf,doc=new jsPDF({unit:"mm",format:"a4"});
-   const W=210,M=14;let y=14;
-   doc.setFont("helvetica","bold");doc.setFontSize(14);doc.text("COMPROVANTE DE ORIENTAÇÃO – ENTRADA NA MINERAÇÃO",M,y);
-   y+=7;doc.setFont("helvetica","normal");doc.setFontSize(10);
-   doc.text(`Local: ${pay.local}`,M,y);y+=5;doc.text(`Protocolo: ${pay.protocolo}`,M,y);y+=5;doc.text(`Data/Hora: ${pay.dh}`,M,y);
-   y+=7;doc.setDrawColor(180);doc.line(M,y,W-M,y);y+=6;
-   doc.setFont("helvetica","bold");doc.text("Identificação do motorista",M,y);y+=5;doc.setFont("helvetica","normal");
-   doc.text(`Nome: ${pay.nome}`,M,y);y+=5;doc.text(`CPF: ${pay.cpf}`,M,y);y+=5;doc.text(`Empresa: ${pay.emp}`,M,y);y+=5;doc.text(`Placa: ${pay.placa}`,M,y);y+=7;
-   doc.setFont("helvetica","bold");doc.text("Questionário",M,y);y+=5;doc.setFont("helvetica","normal");
-   doc.text(`Q1: ${pay.q1} km/h`,M,y);y+=5;doc.text(`Q2: ${pay.q2}`,M,y);y+=5;doc.text(`Q3: ${pay.q3}`,M,y);y+=5;doc.text("Resultado: APROVADO",M,y);y+=7;
-   doc.setFont("helvetica","bold");doc.text("Termo de ciência",M,y);y+=5;doc.setFont("helvetica","normal");
-   const ln=doc.splitTextToSize("Declaro que li/visualizei as orientações de segurança e me comprometo a cumprir as regras internas, incluindo o limite de 30 km/h, sinalizações e orientações da equipe.",W-M*2);
-   doc.text(ln,M,y);y+=(ln.length*4.5)+6;
-   doc.setFont("helvetica","bold");doc.text("Assinatura",M,y);y+=3;
-   const bx=M,by=y+2,bw=W-M*2,bh=32;doc.setDrawColor(120);doc.rect(bx,by,bw,bh);
-   try{doc.addImage(pay.sig,"PNG",bx+5,by+5,bw-10,bh-10);}catch(e){doc.setFontSize(9);doc.text("Falha ao inserir assinatura.",bx+5,by+12);}
-   y=by+bh+8;doc.setFont("helvetica","bold");doc.text("Assinatura do responsável / Portaria",M,y);y+=10;doc.setDrawColor(120);doc.line(M,y,W-M,y);
-   doc.setFontSize(8);doc.setTextColor(90);doc.text(`Hash SHA-256: ${pay.hash}`,M,287);doc.text("Comprovante gerado e salvo no servidor.",M,291);
-   return doc;
- }
- async function enviarPdfServidor(doc, protocolo){
-   const dataUri=doc.output("datauristring");
-   const pdfBase64=dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
-   const form=new FormData();form.append("protocolo",protocolo);form.append("pdf",pdfBase64);
-   const resp=await fetch("salvar_pdf.php",{method:"POST",body:form});
-   const texto=await resp.text();let json;
-   try{json=JSON.parse(texto);}catch(e){console.error("Resposta não JSON do PHP:",texto);throw new Error("O servidor retornou uma resposta inválida.");}
-   if(!resp.ok||!json.ok){throw new Error(json.erro||"Erro ao salvar PDF no servidor");}
-   return json;
- }
- async function baixar(){
-   const pay={local:LOCAL,protocolo:proto,dh:nowBR(),nome:(nome.value||"").trim(),cpf:nCpf(cpf.value),emp:(empresa.value||"").trim(),placa:nPl(placa.value),q1:q1.value,q2:q2.value,q3:q3.value,sig:sigUrl,hash:sigHash};
-   const doc=mkPDF(pay);await enviarPdfServidor(doc,proto);pdfOk=true;bBaixarPdf.disabled=false;badge(sPdf,"ok","PDF salvo no servidor com sucesso");showT(`PDF salvo no servidor — Protocolo: ${proto}`);
- }
- async function gerarPdfAutomaticamente(){
-   if(gerandoAuto||pdfOk)return;
-   if(!ok1()||!ok2()||!ok3()||!ok4()){badge(sPdf,"bad","Requisitos não concluídos");showT("Conclua todas as etapas antes de gerar o PDF.");return;}
-   gerandoAuto=true;
-   try{if(!proto)proto=mkProto();protoEl.textContent=proto;badge(sPdf,"warn","Gerando e salvando PDF automaticamente...");showT("Gerando e salvando PDF automaticamente...");await baixar();badge(sPdf,"ok","PDF salvo no servidor automaticamente");showT(`PDF salvo no servidor — Protocolo: ${proto}`);bGerarPdf.style.display="none";}
-   catch(e){console.error(e);badge(sPdf,"bad","Falha ao salvar PDF no servidor");showT("Falha ao salvar PDF no servidor.");}
-   finally{gerandoAuto=false;}
- }
- bGerarPdf.addEventListener("click",async()=>{if(!ok1()||!ok2()||!ok3()||!ok4()){badge(sPdf,"bad","Requisitos não concluídos");showT("Conclua todas as etapas antes de gerar o PDF.");return;}if(!proto)proto=mkProto();protoEl.textContent=proto;badge(sPdf,"warn","Gerando PDF...");showT("Gerando PDF...");try{await baixar();}catch(e){console.error(e);badge(sPdf,"bad","Falha ao gerar PDF");showT("Falha ao gerar o PDF.");}});
- bBaixarPdf.addEventListener("click",async()=>{if(pdfOk)await baixar();});
- ui();s2ui();s3ui();s4ui();fitCanvas();clearSig(false);updVideo();
+function goTo(n){
+  step = Math.min(5, Math.max(1, n));
+  hideT();
+  ui();
+  if (step === 2) s2ui();
+  if (step === 3) s3ui();
+  if (step === 4) setTimeout(() => { fitCanvas(); clearSig(false); s4ui(); ui(); }, 60);
+  if (step === 5) {
+    if (!proto) proto = mkProto();
+    protoEl.textContent = proto;
+    badge(sPdf, "warn", "Gerando PDF automaticamente...");
+    setTimeout(() => gerarPdfAutomaticamente(), 500);
+  }
+}
+
+bPrev.addEventListener("click", () => goTo(step - 1));
+bNext.addEventListener("click", () => {
+  if (!canGo(step)) { showT("Conclua os requisitos desta etapa para avançar."); return; }
+  goTo(step + 1);
+});
+
+function updVideo(){
+  prBar.style.width = Math.min(100, Math.round((secs / TEMPO) * 100)) + "%";
+  prTxt.textContent = fmt(Math.min(secs, TEMPO)) + " / 6:00";
+  if (ok1()) { badge(sVideo,"ok","Tempo mínimo cumprido — pode avançar"); stopT(); }
+  else badge(sVideo,"warn","Aguardando 6 minutos de reprodução");
+  ui();
+}
+function startT(){ if (tick) return; tick = setInterval(() => { secs++; updVideo(); }, 1000); }
+function stopT(){ if (!tick) return; clearInterval(tick); tick = null; }
+video.addEventListener("play", startT);
+video.addEventListener("pause", stopT);
+video.addEventListener("ended", stopT);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopT();
+  else if (!video.paused && !ok1()) startT();
+});
+
+cpf.addEventListener("input", () => { cpf.value = nCpf(cpf.value); s2ui(); ui(); });
+placa.addEventListener("input", () => { placa.value = nPl(placa.value); s2ui(); ui(); });
+[nome, empresa].forEach(el => el.addEventListener("input", () => { s2ui(); ui(); }));
+[q1, q2, q3].forEach(el => el.addEventListener("change", () => { s3ui(); ui(); }));
+aceite.addEventListener("change", () => { s4ui(); ui(); });
+
+function fitCanvas(){
+  const r = Math.max(window.devicePixelRatio || 1, 1);
+  const w = canvas.offsetWidth, h = canvas.offsetHeight;
+  if (!w || !h) return;
+  canvas.width = Math.floor(w * r);
+  canvas.height = Math.floor(h * r);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(r, 0, 0, r, 0, 0);
+  ctx.lineWidth = 2.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "rgba(14,27,61,.9)";
+}
+function clearSig(reset = true){
+  const ctx = canvas.getContext("2d"), w = canvas.offsetWidth || 1, h = canvas.offsetHeight || 1;
+  ctx.clearRect(0, 0, w, h);
+  ctx.beginPath(); ctx.moveTo(14, h - 18); ctx.lineTo(w - 14, h - 18);
+  ctx.strokeStyle = "rgba(14,27,61,.12)"; ctx.lineWidth = 1; ctx.stroke();
+  ctx.strokeStyle = "rgba(14,27,61,.9)"; ctx.lineWidth = 2.4;
+  if (reset) { sigSaved = false; sigUrl = ""; sigHash = ""; sigInfo.textContent = "Assinatura não registrada"; s4ui(); ui(); }
+}
+function hasInk(){
+  const ctx = canvas.getContext("2d", {willReadFrequently:true}), w = canvas.width, h = canvas.height;
+  if (!w || !h) return false;
+  const iy = Math.floor(h * .78), img = ctx.getImageData(0, 0, w, h).data;
+  for (let y = 0; y < h; y += 8) {
+    if (y >= iy) continue;
+    for (let x = 0; x < w; x += 8) if (img[(y*w+x)*4+3] > 20) return true;
+  }
+  return false;
+}
+const gPos = e => { const r = canvas.getBoundingClientRect(), t = e.touches && e.touches[0]; return {x:(t?t.clientX:e.clientX)-r.left, y:(t?t.clientY:e.clientY)-r.top}; };
+function startDraw(e){ draw = true; const p = gPos(e); lx = p.x; ly = p.y; }
+function moveDraw(e){
+  if (!draw) return;
+  if (e.cancelable) e.preventDefault();
+  const ctx = canvas.getContext("2d"), p = gPos(e);
+  ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(p.x, p.y); ctx.stroke();
+  lx = p.x; ly = p.y;
+}
+canvas.addEventListener("mousedown", startDraw);
+canvas.addEventListener("mousemove", moveDraw);
+window.addEventListener("mouseup", () => draw = false);
+canvas.addEventListener("touchstart", startDraw, {passive:false});
+canvas.addEventListener("touchmove", moveDraw, {passive:false});
+window.addEventListener("touchend", () => draw = false);
+bLimpar.addEventListener("click", () => clearSig(true));
+bSaveSig.addEventListener("click", async () => {
+  try {
+    if (canvas.width === 0 || canvas.height === 0) { fitCanvas(); clearSig(false); }
+    if (!hasInk()) {
+      sigSaved = false; sigUrl = ""; sigHash = "";
+      sigInfo.textContent = "Parece vazia — assine novamente.";
+      badge(sSig,"bad","Assinatura inválida"); ui(); return;
+    }
+    sigUrl = canvas.toDataURL("image/png");
+    sigHash = await sha256(`${nCpf(cpf.value)}\n${nPl(placa.value)}\n${sigUrl.slice(0,1800)}`);
+    sigSaved = true;
+    sigInfo.textContent = "Assinatura registrada ✓";
+    s4ui(); ui();
+  } catch(e) {
+    console.error(e);
+    sigSaved = false; sigUrl = ""; sigHash = "";
+    sigInfo.textContent = "Erro ao salvar assinatura — tente novamente.";
+    badge(sSig,"bad","Erro ao salvar assinatura"); ui();
+  }
+});
+window.addEventListener("resize", () => { if (step === 4) { fitCanvas(); clearSig(false); } });
+
+function mkPDF(pay){
+  const {jsPDF} = window.jspdf, doc = new jsPDF({unit:"mm", format:"a4"});
+  const W = 210, M = 14; let y = 14;
+  doc.setFont("helvetica","bold"); doc.setFontSize(14); doc.text("COMPROVANTE DE ORIENTAÇÃO – ENTRADA NA MINERAÇÃO", M, y);
+  y += 7; doc.setFont("helvetica","normal"); doc.setFontSize(10);
+  doc.text(`Local: ${pay.local}`, M, y); y += 5;
+  doc.text(`Protocolo: ${pay.protocolo}`, M, y); y += 5;
+  doc.text(`Data/Hora: ${pay.dh}`, M, y);
+  y += 7; doc.setDrawColor(180); doc.line(M, y, W-M, y); y += 6;
+  doc.setFont("helvetica","bold"); doc.text("Identificação do motorista", M, y); y += 5;
+  doc.setFont("helvetica","normal");
+  doc.text(`Nome: ${pay.nome}`, M, y); y += 5;
+  doc.text(`CPF: ${pay.cpf}`, M, y); y += 5;
+  doc.text(`Empresa: ${pay.emp}`, M, y); y += 5;
+  doc.text(`Placa: ${pay.placa}`, M, y); y += 7;
+  doc.setFont("helvetica","bold"); doc.text("Questionário", M, y); y += 5;
+  doc.setFont("helvetica","normal");
+  doc.text(`Q1: ${pay.q1} km/h`, M, y); y += 5;
+  doc.text(`Q2: ${pay.q2}`, M, y); y += 5;
+  doc.text(`Q3: ${pay.q3}`, M, y); y += 5;
+  doc.text("Resultado: APROVADO", M, y); y += 7;
+  doc.setFont("helvetica","bold"); doc.text("Termo de ciência", M, y); y += 5;
+  doc.setFont("helvetica","normal");
+  const ln = doc.splitTextToSize("Declaro que li/visualizei as orientações de segurança e me comprometo a cumprir as regras internas, incluindo o limite de 30 km/h, sinalizações e orientações da equipe.", W-M*2);
+  doc.text(ln, M, y); y += (ln.length * 4.5) + 6;
+  doc.setFont("helvetica","bold"); doc.text("Assinatura", M, y); y += 3;
+  const bx = M, by = y + 2, bw = W - M*2, bh = 32;
+  doc.setDrawColor(120); doc.rect(bx, by, bw, bh);
+  try { doc.addImage(pay.sig, "PNG", bx+5, by+5, bw-10, bh-10); }
+  catch(e) { doc.setFontSize(9); doc.text("Falha ao inserir assinatura.", bx+5, by+12); }
+  y = by + bh + 8;
+  doc.setFont("helvetica","bold"); doc.text("Assinatura do responsável / Portaria", M, y); y += 10;
+  doc.setDrawColor(120); doc.line(M, y, W-M, y);
+  doc.setFontSize(8); doc.setTextColor(90);
+  doc.text(`Hash SHA-256: ${pay.hash}`, M, 287);
+  doc.text("Comprovante gerado e salvo na nuvem.", M, 291);
+  return doc;
+}
+
+async function enviarPdfServidor(doc, protocolo) {
+  const dataUri = doc.output("datauristring");
+  const pdfBase64 = dataUri.includes(",") ? dataUri.split(",")[1] : dataUri;
+
+  const resp = await fetch(API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ protocolo, pdf: pdfBase64 })
+  });
+
+  let json;
+  try { json = await resp.json(); }
+  catch(e) { throw new Error("Resposta inválida da API da Vercel."); }
+
+  if (!resp.ok || !json.ok) throw new Error(json.erro || "Erro ao salvar PDF na nuvem");
+  return json;
+}
+
+async function baixar(){
+  const pay = {
+    local: LOCAL, protocolo: proto, dh: nowBR(),
+    nome: (nome.value || "").trim(), cpf: nCpf(cpf.value),
+    emp: (empresa.value || "").trim(), placa: nPl(placa.value),
+    q1: q1.value, q2: q2.value, q3: q3.value, sig: sigUrl, hash: sigHash
+  };
+  const doc = mkPDF(pay);
+  await enviarPdfServidor(doc, proto);
+  pdfOk = true;
+  bBaixarPdf.disabled = false;
+  badge(sPdf,"ok","PDF salvo na nuvem com sucesso");
+  showT(`PDF salvo na nuvem — Protocolo: ${proto}`);
+}
+
+async function gerarPdfAutomaticamente(){
+  if (gerandoAuto || pdfOk) return;
+  if (!ok1() || !ok2() || !ok3() || !ok4()) {
+    badge(sPdf,"bad","Requisitos não concluídos");
+    showT("Conclua todas as etapas antes de gerar o PDF.");
+    return;
+  }
+  gerandoAuto = true;
+  try {
+    if (!proto) proto = mkProto();
+    protoEl.textContent = proto;
+    badge(sPdf,"warn","Gerando e salvando PDF na nuvem...");
+    showT("Gerando e salvando PDF na nuvem...");
+    await baixar();
+    badge(sPdf,"ok","PDF salvo na nuvem automaticamente");
+    showT(`PDF salvo na nuvem — Protocolo: ${proto}`);
+    bGerarPdf.style.display = "none";
+  } catch(e) {
+    console.error(e);
+    badge(sPdf,"bad","Falha ao salvar PDF na nuvem");
+    showT(e.message || "Falha ao salvar PDF na nuvem.");
+  } finally {
+    gerandoAuto = false;
+  }
+}
+
+bGerarPdf.addEventListener("click", async () => {
+  if (!ok1() || !ok2() || !ok3() || !ok4()) {
+    badge(sPdf,"bad","Requisitos não concluídos");
+    showT("Conclua todas as etapas antes de gerar o PDF.");
+    return;
+  }
+  if (!proto) proto = mkProto();
+  protoEl.textContent = proto;
+  badge(sPdf,"warn","Gerando PDF...");
+  showT("Gerando PDF...");
+  try { await baixar(); }
+  catch(e) { console.error(e); badge(sPdf,"bad","Falha ao gerar PDF"); showT(e.message || "Falha ao gerar o PDF."); }
+});
+bBaixarPdf.addEventListener("click", async () => { if (pdfOk) await baixar(); });
+
+ui(); s2ui(); s3ui(); s4ui(); fitCanvas(); clearSig(false); updVideo();
 </script>
 </body>
 </html>
