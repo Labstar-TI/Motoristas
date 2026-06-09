@@ -792,14 +792,24 @@ async function enviarPdfServidor(doc, protocolo) {
   const resp = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ protocolo, pdf: pdfBase64 })
+    body: JSON.stringify({
+      protocolo,
+      cpf: nCpf(cpf.value),
+      pdf: pdfBase64
+    })
   });
 
   let json;
-  try { json = await resp.json(); }
-  catch(e) { throw new Error("Resposta inválida da API da Vercel."); }
+  try {
+    json = await resp.json();
+  } catch(e) {
+    throw new Error("Resposta inválida da API da Vercel.");
+  }
 
-  if (!resp.ok || !json.ok) throw new Error(json.erro || "Erro ao salvar PDF na nuvem");
+  if (!resp.ok || !json.ok) {
+    throw new Error(json.erro || "Erro ao salvar PDF na nuvem");
+  }
+
   return json;
 }
 
