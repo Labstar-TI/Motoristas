@@ -791,15 +791,21 @@ async function enviarPdfServidor(doc, protocolo) {
 
   const resp = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json"
+    },
     body: JSON.stringify({
       protocolo,
       cpf: nCpf(cpf.value),
+      nome: (nome.value || "").trim(),
+      empresa: (empresa.value || "").trim(),
+      placa: nPl(placa.value),
       pdf: pdfBase64
     })
   });
 
   let json;
+
   try {
     json = await resp.json();
   } catch(e) {
