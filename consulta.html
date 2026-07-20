@@ -141,6 +141,29 @@
     <button id="btnConsultar">Consultar</button>
 
     <div id="resultado" class="resultado"></div>
+    <hr style="margin:30px 0;">
+
+<h2>Relatórios</h2>
+
+<div style="margin-top:15px;">
+
+  <label>Data Inicial</label>
+  <input type="date" id="dataInicial">
+
+  <label>Data Final</label>
+  <input type="date" id="dataFinal">
+
+  <button id="btnRelatorio">
+    Gerar Relatório
+  </button>
+
+</div>
+
+<div id="totais" style="margin-top:20px;"></div>
+
+<div id="resultadoRelatorio"
+     style="margin-top:20px;overflow:auto;">
+</div>
   </div>
 
 <script>
@@ -149,6 +172,11 @@ const API_CONSULTA = "https://api-motoristas.vercel.app/api/consultar-treinament
 const cpfInput = document.getElementById("cpfConsulta");
 const btnConsultar = document.getElementById("btnConsultar");
 const resultado = document.getElementById("resultado");
+const API_RELATORIO =
+"https://api-motoristas.vercel.app/api/relatorio-completo";
+
+let dadosRelatorio = [];
+
 
 function somenteNumeros(valor) {
   return String(valor || "").replace(/\D/g, "").slice(0, 11);
@@ -227,6 +255,98 @@ btnConsultar.addEventListener("click", async () => {
     console.error(err);
     mostrar("bad", "Erro ao consultar treinamento. Tente novamente.");
   }
+});
+document
+.getElementById("btnRelatorio")
+.addEventListener("click", async () => {
+
+  try {
+
+    const inicio =
+      document.getElementById("dataInicial").value;
+
+    const fim =
+      document.getElementById("dataFinal").value;
+
+    const resp =
+      await fetch(API_RELATORIO);
+
+    const json =
+      await resp.json();
+
+    let registros =
+      json.registros || [];
+
+    if (inicio) {
+
+      registros = registros.filter(r =>
+        r.dataTreinamento.substring(0,10)
+        >= inicio
+      );
+
+    }
+
+    if (fim) {
+
+      registros = registros.filter(r =>
+        r.dataTreinamento.substring(0,10)
+        <= fim
+      );
+
+    }
+
+    dadosRelatorio = registros;
+
+    document.getElementById(
+      "totais"
+    ).innerHTML = `
+      <strong>Total encontrados:</strong>
+      ${registros.length}
+    `;
+
+    let html = `
+      <table style="
+        width:100%;
+        border-collapse:collapse;
+      ">
+      <tr>
+        <th>Nome</th>
+        <th>Empresa</th>
+        <th>CPF</th>
+        <th>Data</th>
+      </tr>
+    `;
+
+    registros.forEach(r => {
+
+      html += `
+        <tr>
+          <td>${r.nome}</td>
+          <td>${r.empresa}</td>
+          <td>${r.cpf}</td>
+          <td>${r.dataTreinamentoBR}</td>
+        </tr>
+      `;
+
+    });
+
+    html += "</table>";
+
+    document.getElementById(
+      "resultadoRelatorio"
+    ).innerHTML = html;
+
+  } catch(err) {
+
+    console.error(err);
+
+    document.getElementById(
+      "resultadoRelatorio"
+    ).innerHTML =
+      "Erro ao gerar relatório.";
+
+  }
+
 });
 </script>
 
