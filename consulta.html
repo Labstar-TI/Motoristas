@@ -271,8 +271,11 @@ document
     const resp =
       await fetch(API_RELATORIO);
 
-    const json =
-      await resp.json();
+    const texto = await resp.text();
+
+console.log(texto);
+
+const json = JSON.parse(texto);
 
     let registros =
       json.registros || [];
@@ -338,14 +341,14 @@ document
 
   } catch(err) {
 
-    console.error(err);
+  console.error(err);
 
-    document.getElementById(
-      "resultadoRelatorio"
-    ).innerHTML =
-      "Erro ao gerar relatório.";
+  document.getElementById(
+    "resultadoRelatorio"
+  ).innerHTML =
+      "<pre>" + err + "</pre>";
 
-  }
+}
 
 });
 </script>
